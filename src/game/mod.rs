@@ -14,4 +14,4 @@ pub mod tetromino;
 // pub mod scoring;     // 점수 시스템 (메커니즘 구현 후)
 
 pub use playfield::*;
-// pub use tetromino::*;  // 테트로미노 구현 후 활성화
+pub use tetromino::*;
