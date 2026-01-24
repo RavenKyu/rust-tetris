@@ -10,10 +10,11 @@
 pub mod mechanics;
 pub mod playfield;
 pub mod rotation;
+pub mod scoring;
 pub mod tetromino;
-// pub mod scoring;     // 점수 시스템 (메커니즘 구현 후)
 
 pub use mechanics::*;
 pub use playfield::*;
 pub use rotation::*;
+pub use scoring::*;
 pub use tetromino::*;
