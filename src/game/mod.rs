@@ -6,13 +6,16 @@
 //! - 회전 시스템 (SRS)
 //! - 게임 메커니즘 (락다운, 홀드 등)
 //! - 점수 시스템
+//! - 마라톤 모드
 
+pub mod marathon;
 pub mod mechanics;
 pub mod playfield;
 pub mod rotation;
 pub mod scoring;
 pub mod tetromino;
 
+pub use marathon::*;
 pub use mechanics::*;
 pub use playfield::*;
 pub use rotation::*;
