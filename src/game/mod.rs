@@ -7,12 +7,13 @@
 //! - 게임 메커니즘 (락다운, 홀드 등)
 //! - 점수 시스템
 
+pub mod mechanics;
 pub mod playfield;
 pub mod rotation;
 pub mod tetromino;
-// pub mod mechanics;   // 게임 메커니즘 (플레이필드, 테트로미노 구현 후)
 // pub mod scoring;     // 점수 시스템 (메커니즘 구현 후)
 
+pub use mechanics::*;
 pub use playfield::*;
 pub use rotation::*;
 pub use tetromino::*;
