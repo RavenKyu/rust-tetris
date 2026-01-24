@@ -8,10 +8,11 @@
 //! - 점수 시스템
 
 pub mod playfield;
+pub mod rotation;
 pub mod tetromino;
-// pub mod rotation;    // SRS 회전 시스템 (테트로미노 구현 후)
 // pub mod mechanics;   // 게임 메커니즘 (플레이필드, 테트로미노 구현 후)
 // pub mod scoring;     // 점수 시스템 (메커니즘 구현 후)
 
 pub use playfield::*;
+pub use rotation::*;
 pub use tetromino::*;
