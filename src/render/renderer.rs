@@ -11,7 +11,9 @@ use sdl3::video::{Window, WindowContext};
 use super::color::{Color, Palette};
 use super::layout::{DEFAULT_WINDOW_HEIGHT, DEFAULT_WINDOW_WIDTH, Layout, Rect};
 use super::state::RenderState;
-use crate::game::{Cell, Playfield, TetrominoKind, VISIBLE_HEIGHT, calculate_ghost_position};
+use crate::game::{
+    Cell, Playfield, Tetromino, TetrominoKind, VISIBLE_HEIGHT, calculate_ghost_position,
+};
 
 // ============================================================================
 // 타입 변환

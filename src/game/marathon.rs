@@ -1010,8 +1010,7 @@ mod tests {
 
         // 게임이 여전히 진행 중이거나 게임 오버
         assert!(
-            game.state() == GameState::Playing
-                || matches!(game.state(), GameState::GameOver(_))
+            game.state() == GameState::Playing || matches!(game.state(), GameState::GameOver(_))
         );
 
         // 점수가 증가했는지 확인
