@@ -10,10 +10,10 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 /// 기본 DAS 값 (밀리초)
-pub const DEFAULT_DAS_MS: u64 = 100;
+pub const DEFAULT_DAS_MS: u64 = 167;
 
-/// 기본 ARR 값 (밀리초, 0 = 즉시)
-pub const DEFAULT_ARR_MS: u64 = 0;
+/// 기본 ARR 값 (밀리초)
+pub const DEFAULT_ARR_MS: u64 = 50;
 
 /// 게임 액션 (입력에 의해 트리거되는 동작)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -641,7 +641,7 @@ mod tests {
         handler.update(Duration::ZERO);
 
         // DAS 충전 후에도 좌우 상쇄
-        let events = handler.update(Duration::from_millis(150));
+        let events = handler.update(Duration::from_millis(200));
         assert!(
             !events
                 .iter()
