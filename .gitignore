@@ -1,0 +1,7 @@
+# Rust build output
+/target
+
+# Claude Code local settings
+.claude/
+
+.serena/
