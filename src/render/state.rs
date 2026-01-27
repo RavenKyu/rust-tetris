@@ -4,6 +4,19 @@
 
 use crate::game::{Playfield, Tetromino, TetrominoKind};
 
+/// 설정 화면 상태
+#[derive(Debug, Clone, Default)]
+pub struct SettingsState {
+    /// 설정 화면 활성화 여부
+    pub active: bool,
+    /// 현재 선택된 항목 (0: DAS, 1: ARR)
+    pub selected_item: u8,
+    /// 현재 DAS 값 (ms)
+    pub das_ms: u64,
+    /// 현재 ARR 값 (ms)
+    pub arr_ms: u64,
+}
+
 /// 렌더링에 필요한 게임 상태
 #[derive(Debug, Clone)]
 pub struct RenderState {
@@ -27,6 +40,8 @@ pub struct RenderState {
     pub game_over: bool,
     /// 일시정지 여부
     pub paused: bool,
+    /// 설정 화면 상태
+    pub settings: SettingsState,
 }
 
 impl Default for RenderState {
@@ -42,6 +57,7 @@ impl Default for RenderState {
             lines: 0,
             game_over: false,
             paused: false,
+            settings: SettingsState::default(),
         }
     }
 }
@@ -62,5 +78,6 @@ mod tests {
         assert_eq!(state.lines, 0);
         assert!(!state.game_over);
         assert!(!state.paused);
+        assert!(!state.settings.active);
     }
 }

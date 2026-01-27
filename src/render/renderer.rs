@@ -10,7 +10,8 @@ use sdl3::video::{Window, WindowContext};
 
 use super::color::{Color, Palette};
 use super::layout::{DEFAULT_WINDOW_HEIGHT, DEFAULT_WINDOW_WIDTH, Layout, Rect};
-use super::state::RenderState;
+use super::state::{RenderState, SettingsState};
+use crate::settings::GameSettings;
 use crate::game::{
     Cell, Playfield, Tetromino, TetrominoKind, VISIBLE_HEIGHT, calculate_ghost_position,
 };
@@ -111,8 +112,10 @@ impl Renderer {
         // 점수/레벨/라인 렌더링
         self.render_info(state.score, state.level, state.lines)?;
 
-        // 게임 오버/일시정지 오버레이
-        if state.game_over {
+        // 게임 오버/일시정지/설정 오버레이
+        if state.settings.active {
+            self.render_settings_overlay(&state.settings)?;
+        } else if state.game_over {
             self.render_game_over_overlay()?;
         } else if state.paused {
             self.render_pause_overlay()?;
@@ -429,6 +432,178 @@ impl Renderer {
             .map_err(|e| e.to_string())?;
         self.canvas
             .fill_rect(to_sdl_rect(right_bar))
+            .map_err(|e| e.to_string())?;
+
+        Ok(())
+    }
+
+    /// 설정 화면 오버레이
+    fn render_settings_overlay(&mut self, settings: &SettingsState) -> Result<(), String> {
+        let field = &self.layout.playfield;
+
+        // 반투명 어두운 오버레이
+        self.canvas.set_draw_color(SdlColor::RGBA(10, 10, 30, 200));
+        self.canvas
+            .fill_rect(to_sdl_rect(*field))
+            .map_err(|e| e.to_string())?;
+
+        let panel_width = (field.width as f32 * 0.8) as u32;
+        let panel_height = (field.height as f32 * 0.4) as u32;
+        let panel_x = field.center_x() - panel_width as i32 / 2;
+        let panel_y = field.center_y() - panel_height as i32 / 2;
+
+        // 패널 배경
+        let panel = Rect::new(panel_x, panel_y, panel_width, panel_height);
+        self.canvas.set_draw_color(to_sdl_color(Palette::GRID));
+        self.canvas
+            .fill_rect(to_sdl_rect(panel))
+            .map_err(|e| e.to_string())?;
+        self.canvas.set_draw_color(to_sdl_color(Palette::BORDER));
+        self.canvas
+            .draw_rect(to_sdl_rect(panel))
+            .map_err(|e| e.to_string())?;
+
+        let item_height = panel_height / 3;
+        let bar_margin = 10;
+        let bar_height = (item_height as i32 - bar_margin * 2).max(8) as u32;
+        let bar_width = (panel_width as i32 - bar_margin * 4).max(20) as u32;
+        let bar_x = panel_x + bar_margin * 2;
+
+        // DAS 슬라이더 (항목 0)
+        let das_y = panel_y + bar_margin;
+        self.render_settings_slider(
+            bar_x,
+            das_y,
+            bar_width,
+            bar_height,
+            settings.das_ms,
+            GameSettings::DAS_MIN,
+            GameSettings::DAS_MAX,
+            settings.selected_item == 0,
+            Palette::CYAN,
+        )?;
+
+        // ARR 슬라이더 (항목 1)
+        let arr_y = panel_y + item_height as i32 + bar_margin;
+        self.render_settings_slider(
+            bar_x,
+            arr_y,
+            bar_width,
+            bar_height,
+            settings.arr_ms,
+            GameSettings::ARR_MIN,
+            GameSettings::ARR_MAX,
+            settings.selected_item == 1,
+            Palette::GREEN,
+        )?;
+
+        // 하단 힌트 영역 — 작은 사각형으로 조작 키 표시
+        let hint_y = panel_y + item_height as i32 * 2 + bar_margin;
+        let hint_size = 12_u32;
+        let hint_gap = 6;
+        let hints_total_width = hint_size * 4 + hint_gap as u32 * 3;
+        let hint_start_x = panel_x + (panel_width as i32 - hints_total_width as i32) / 2;
+
+        // 위 화살표 (항목 전환)
+        self.canvas.set_draw_color(to_sdl_color(Palette::TEXT_SECONDARY));
+        let up_rect = Rect::new(hint_start_x, hint_y, hint_size, hint_size);
+        self.canvas
+            .fill_rect(to_sdl_rect(up_rect))
+            .map_err(|e| e.to_string())?;
+
+        // 좌 화살표 (값 감소)
+        let left_rect = Rect::new(
+            hint_start_x + hint_size as i32 + hint_gap,
+            hint_y,
+            hint_size,
+            hint_size,
+        );
+        self.canvas
+            .fill_rect(to_sdl_rect(left_rect))
+            .map_err(|e| e.to_string())?;
+
+        // 우 화살표 (값 증가)
+        let right_rect = Rect::new(
+            hint_start_x + (hint_size as i32 + hint_gap) * 2,
+            hint_y,
+            hint_size,
+            hint_size,
+        );
+        self.canvas
+            .fill_rect(to_sdl_rect(right_rect))
+            .map_err(|e| e.to_string())?;
+
+        // ESC (닫기)
+        let esc_rect = Rect::new(
+            hint_start_x + (hint_size as i32 + hint_gap) * 3,
+            hint_y,
+            hint_size,
+            hint_size,
+        );
+        self.canvas.set_draw_color(to_sdl_color(Palette::RED));
+        self.canvas
+            .fill_rect(to_sdl_rect(esc_rect))
+            .map_err(|e| e.to_string())?;
+
+        Ok(())
+    }
+
+    /// 설정 슬라이더 렌더링
+    #[allow(clippy::too_many_arguments)]
+    fn render_settings_slider(
+        &mut self,
+        x: i32,
+        y: i32,
+        width: u32,
+        height: u32,
+        value: u64,
+        min_val: u64,
+        max_val: u64,
+        selected: bool,
+        fill_color: Color,
+    ) -> Result<(), String> {
+        // 선택 표시 (좌측에 작은 인디케이터)
+        if selected {
+            let indicator = Rect::new(x - 8, y + height as i32 / 2 - 4, 4, 8);
+            self.canvas.set_draw_color(to_sdl_color(Palette::TEXT));
+            self.canvas
+                .fill_rect(to_sdl_rect(indicator))
+                .map_err(|e| e.to_string())?;
+        }
+
+        // 슬라이더 트랙 배경
+        let track = Rect::new(x, y, width, height);
+        self.canvas
+            .set_draw_color(to_sdl_color(Palette::BACKGROUND));
+        self.canvas
+            .fill_rect(to_sdl_rect(track))
+            .map_err(|e| e.to_string())?;
+
+        // 채우기 바
+        let range = max_val - min_val;
+        let ratio = if range > 0 {
+            ((value - min_val) as f32 / range as f32).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        let fill_width = ((width - 2) as f32 * ratio) as u32;
+        if fill_width > 0 {
+            let fill = Rect::new(x + 1, y + 1, fill_width, height - 2);
+            self.canvas.set_draw_color(to_sdl_color(fill_color));
+            self.canvas
+                .fill_rect(to_sdl_rect(fill))
+                .map_err(|e| e.to_string())?;
+        }
+
+        // 테두리 (선택 시 밝게)
+        let border_color = if selected {
+            Palette::TEXT
+        } else {
+            Palette::BORDER
+        };
+        self.canvas.set_draw_color(to_sdl_color(border_color));
+        self.canvas
+            .draw_rect(to_sdl_rect(track))
             .map_err(|e| e.to_string())?;
 
         Ok(())
