@@ -946,7 +946,7 @@ mod tests {
         // 피스를 오른쪽 끝에 배치하여 라인 완성 시도
         // 이 테스트는 단순히 라인 클리어 로직이 동작하는지 확인
 
-        let initial_lines = game.lines();
+        let _initial_lines = game.lines();
         let initial_score = game.score();
 
         // 하드 드롭 후 락다운
