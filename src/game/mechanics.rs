@@ -24,30 +24,30 @@ pub const LOCKDOWN_DELAY_MS: u64 = 500;
 /// 락다운 리셋 최대 횟수 (Extended Placement)
 pub const MAX_MOVE_RESETS: u32 = 15;
 
-/// 레벨별 중력 테이블 (초당 G 단위)
-/// 인덱스 = 레벨 (0부터 시작), 값 = 초당 행 수
-/// 테트리스 가이드라인 기준
+/// 레벨별 중력 테이블 (초당 셀 단위)
+/// 인덱스 = 레벨 (0부터 시작), 값 = 초당 낙하 행 수
+/// tetris-core.md 섹션 8.2 기준 (초/줄의 역수)
 const GRAVITY_TABLE: [f64; 20] = [
-    0.01667,  // Level 0: 1/60G (60프레임당 1칸)
-    0.021017, // Level 1
-    0.026977, // Level 2
-    0.035256, // Level 3
-    0.04693,  // Level 4
-    0.06361,  // Level 5
-    0.0879,   // Level 6
-    0.1236,   // Level 7
-    0.1775,   // Level 8
-    0.2598,   // Level 9
-    0.388,    // Level 10
-    0.59,     // Level 11
-    0.92,     // Level 12
-    1.46,     // Level 13
-    2.36,     // Level 14
-    3.91,     // Level 15
-    6.61,     // Level 16
-    11.43,    // Level 17
-    20.0,     // Level 18: 20G
-    20.0,     // Level 19+: 20G
+    0.8,     // Level 0: 스폰 전용 (약 1.25초/셀)
+    1.0,     // Level 1: 1.0초/셀
+    1.261,   // Level 2: 0.793초/셀
+    1.618,   // Level 3: 0.618초/셀
+    2.114,   // Level 4: 0.473초/셀
+    2.817,   // Level 5: 0.355초/셀
+    3.817,   // Level 6: 0.262초/셀
+    5.263,   // Level 7: 0.190초/셀
+    7.407,   // Level 8: 0.135초/셀
+    10.638,  // Level 9: 0.094초/셀
+    15.625,  // Level 10: 0.064초/셀
+    23.256,  // Level 11: 0.043초/셀
+    23.256,  // Level 12: 0.043초/셀
+    35.714,  // Level 13: 0.028초/셀
+    35.714,  // Level 14: 0.028초/셀
+    35.714,  // Level 15: 0.028초/셀
+    55.556,  // Level 16: 0.018초/셀
+    55.556,  // Level 17: 0.018초/셀
+    55.556,  // Level 18: 0.018초/셀
+    90.909,  // Level 19+: 0.011초/셀 (≈20G)
 ];
 
 // ============================================================================
@@ -397,31 +397,29 @@ mod tests {
     fn test_gravity_level_0() {
         let gs = GravitySystem::new(0);
         let g = gs.gravity();
-        assert!((g - 0.01667).abs() < 0.0001);
+        assert!((g - 0.8).abs() < 0.0001);
     }
 
     #[test]
     fn test_gravity_level_capped_at_19() {
         let gs = GravitySystem::new(100);
         let g = gs.gravity();
-        assert!((g - 20.0).abs() < 0.001);
+        assert!((g - 90.909).abs() < 0.001);
     }
 
     #[test]
     fn test_gravity_update_single_drop() {
-        let mut gs = GravitySystem::new(18); // 20G
-        // 20G = 20행/초, 50ms = 0.05초 → 1행
-        let drops = gs.update(Duration::from_millis(50));
+        let mut gs = GravitySystem::new(18); // 55.556 cells/sec
+        // 55.556 cells/sec, 20ms = 0.02초 → 1.11행 → 1행 낙하
+        let drops = gs.update(Duration::from_millis(20));
         assert_eq!(drops, 1);
     }
 
     #[test]
     fn test_gravity_update_accumulation() {
-        let mut gs = GravitySystem::new(0); // 0.01667G
-        // 0.01667 * 60 = 1행 (약 60초에 1행이면 느림, 테스트용으로 큰 값)
-        // 실제로는 1/60G = 약 1초에 1/60행
-        // 60초 경과 시 약 1행
-        let drops = gs.update(Duration::from_secs(60));
+        let mut gs = GravitySystem::new(0); // 0.8 cells/sec
+        // 0.8 * 2초 = 1.6행 → 1행 낙하
+        let drops = gs.update(Duration::from_secs(2));
         assert!(drops >= 1);
     }
 
@@ -635,8 +633,8 @@ mod tests {
     fn test_spawn_collision_with_blocks() {
         let mut playfield = Playfield::new();
         use crate::game::playfield::{Cell, CellColor};
-        // 스폰 위치(y=20~23)에 블록 배치
-        playfield.set(4, 22, Cell::Filled(CellColor::Cyan));
+        // 스폰 위치(y=20~21)에 블록 배치
+        playfield.set(4, 20, Cell::Filled(CellColor::Cyan));
 
         let tetromino = Tetromino::new(TetrominoKind::T);
         assert!(check_spawn_collision(&tetromino, &playfield));
@@ -666,7 +664,7 @@ mod tests {
     fn test_game_over_spawn() {
         let mut playfield = Playfield::new();
         use crate::game::playfield::{Cell, CellColor};
-        playfield.set(4, 22, Cell::Filled(CellColor::Cyan));
+        playfield.set(4, 20, Cell::Filled(CellColor::Cyan));
 
         let tetromino = Tetromino::new(TetrominoKind::T);
         let result = check_game_over(&tetromino, &playfield, true);
