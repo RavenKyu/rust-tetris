@@ -10,10 +10,10 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 /// 기본 DAS 값 (밀리초)
-pub const DEFAULT_DAS_MS: u64 = 100;
+pub const DEFAULT_DAS_MS: u64 = 167;
 
-/// 기본 ARR 값 (밀리초, 0 = 즉시)
-pub const DEFAULT_ARR_MS: u64 = 0;
+/// 기본 ARR 값 (밀리초)
+pub const DEFAULT_ARR_MS: u64 = 50;
 
 /// 게임 액션 (입력에 의해 트리거되는 동작)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -302,6 +302,12 @@ impl InputHandler {
     /// DAS/ARR 설정
     pub fn set_das_arr(&mut self, config: DasArrConfig) {
         self.das_arr = config;
+    }
+
+    /// DAS/ARR 설정 조회
+    #[must_use]
+    pub fn das_arr(&self) -> &DasArrConfig {
+        &self.das_arr
     }
 
     /// 키 누름 이벤트 처리
@@ -641,7 +647,7 @@ mod tests {
         handler.update(Duration::ZERO);
 
         // DAS 충전 후에도 좌우 상쇄
-        let events = handler.update(Duration::from_millis(150));
+        let events = handler.update(Duration::from_millis(200));
         assert!(
             !events
                 .iter()
@@ -701,6 +707,50 @@ mod tests {
                 .iter()
                 .any(|e| matches!(e, InputEvent::Repeat(GameAction::MoveLeft, _))),
             "DAS should be reset after key up"
+        );
+    }
+
+    #[test]
+    fn test_runtime_das_arr_update() {
+        // 초기 DAS=100, ARR=50으로 시작
+        let mut handler = InputHandler::with_das_arr(DasArrConfig::new(100, 50));
+
+        handler.key_down(VirtualKey::Left);
+        handler.update(Duration::ZERO); // 첫 프레스
+
+        // 110ms 후 DAS 충전 완료 (DAS=100ms)
+        let events = handler.update(Duration::from_millis(110));
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, InputEvent::Repeat(GameAction::MoveLeft, _))),
+            "Should repeat with DAS=100ms after 110ms"
+        );
+
+        // 런타임에 DAS를 200ms로 변경
+        handler.set_das_arr(DasArrConfig::new(200, 50));
+
+        // 키를 뗐다가 다시 눌러 DAS 리셋
+        handler.key_up(VirtualKey::Left);
+        handler.key_down(VirtualKey::Left);
+        handler.update(Duration::ZERO); // 첫 프레스
+
+        // 150ms 후 — 새 DAS(200ms)에는 부족
+        let events = handler.update(Duration::from_millis(150));
+        assert!(
+            !events
+                .iter()
+                .any(|e| matches!(e, InputEvent::Repeat(GameAction::MoveLeft, _))),
+            "Should NOT repeat with DAS=200ms after only 150ms"
+        );
+
+        // 추가 60ms (총 210ms) — 새 DAS(200ms) 초과
+        let events = handler.update(Duration::from_millis(60));
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, InputEvent::Repeat(GameAction::MoveLeft, _))),
+            "Should repeat with DAS=200ms after 210ms total"
         );
     }
 }

@@ -150,12 +150,13 @@ impl TetrominoKind {
     }
 
     /// 스폰 Y 오프셋 (플레이필드 기준, 바닥이 0)
-    /// 21-22행에서 스폰 (가시 영역 바로 위)
+    /// 20-21행에서 스폰 (가시 영역 상단에 부분적으로 보임)
     #[must_use]
     pub const fn spawn_y_offset(self) -> i32 {
-        // 4×4 매트릭스 기준, 상단 2행에 미노가 있으므로
-        // 플레이필드 Y=20 위치에 매트릭스 하단이 오도록
-        20
+        // 4×4 매트릭스 기준, 상단 2행(row 0-1)에 미노가 있으므로
+        // row 0 → y+3 = 21, row 1 → y+2 = 20
+        // 미노가 20-21행에 위치하여 스폰 시 즉시 보임
+        18
     }
 }
 
@@ -434,7 +435,7 @@ mod tests {
         let t = Tetromino::new(TetrominoKind::T);
         assert_eq!(t.kind, TetrominoKind::T);
         assert_eq!(t.x, 3);
-        assert_eq!(t.y, 20);
+        assert_eq!(t.y, 18);
     }
 
     #[test]
@@ -442,10 +443,10 @@ mod tests {
         let t = Tetromino::new(TetrominoKind::I);
         let blocks = t.blocks();
         assert_eq!(blocks.len(), 4);
-        // I 미노는 가로 4칸 (y=22 높이에 위치)
-        // 매트릭스 row 1에 블록이 있으므로 y = 20 + (3 - 1) = 22
+        // I 미노는 가로 4칸 (y=20 높이에 위치)
+        // 매트릭스 row 1에 블록이 있으므로 y = 18 + (3 - 1) = 20
         for (x, y) in &blocks {
-            assert_eq!(*y, 22);
+            assert_eq!(*y, 20);
             assert!((3..=6).contains(x));
         }
     }

@@ -897,10 +897,8 @@ mod tests {
 
         let initial_y = game.current_piece().unwrap().blocks()[0].1;
 
-        // 충분한 시간 경과 (레벨 1에서 1초에 약 0.02칸, 더 긴 시간 필요)
-        // GRAVITY_TABLE[1] = 0.021017 (초당 행 수)
-        // 50초면 약 1행 낙하
-        game.update(Duration::from_secs(50));
+        // 레벨 1에서 1.0 cells/sec, 2초면 2행 낙하
+        game.update(Duration::from_secs(2));
 
         let after_y = game.current_piece().unwrap().blocks()[0].1;
         assert!(after_y < initial_y);
@@ -914,7 +912,7 @@ mod tests {
         game.start();
 
         // 플레이필드 스폰 영역을 블록으로 채움
-        // 테트로미노는 y=20에서 스폰, 실제 블록은 y=22-23에 위치
+        // 테트로미노는 y=18에서 스폰, 실제 블록은 y=20-21에 위치
         for x in 0..10 {
             for y in 20..24 {
                 game.playfield.set(x, y, Cell::Filled(CellColor::Cyan));
@@ -946,7 +944,7 @@ mod tests {
         // 피스를 오른쪽 끝에 배치하여 라인 완성 시도
         // 이 테스트는 단순히 라인 클리어 로직이 동작하는지 확인
 
-        let initial_lines = game.lines();
+        let _initial_lines = game.lines();
         let initial_score = game.score();
 
         // 하드 드롭 후 락다운

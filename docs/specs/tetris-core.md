@@ -200,10 +200,10 @@
 | 재시작 | R |
 
 ### 7.2 DAS/ARR 설정
-- **DAS (Delayed Auto Shift)**: 100ms
+- **DAS (Delayed Auto Shift)**: 167ms (10프레임 @60fps)
   - 키를 누르고 있을 때 자동 반복 시작까지의 지연
-- **ARR (Auto Repeat Rate)**: 0ms
-  - 자동 반복 간격 (0 = 즉시 끝까지 이동)
+- **ARR (Auto Repeat Rate)**: 50ms (3프레임 @60fps)
+  - 자동 반복 간격
 
 ### 7.3 Soft Drop
 - 속도: 기본 낙하 속도의 20배

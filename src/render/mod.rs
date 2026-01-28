@@ -18,7 +18,7 @@ pub use layout::{
     DEFAULT_CELL_SIZE, DEFAULT_WINDOW_HEIGHT, DEFAULT_WINDOW_WIDTH, FIELD_HEIGHT, FIELD_WIDTH,
     Layout, MAX_CELL_SIZE, MIN_CELL_SIZE, NEXT_PREVIEW_COUNT, Rect,
 };
-pub use state::RenderState;
+pub use state::{RenderState, SettingsState};
 
 #[cfg(feature = "sdl3")]
 pub use renderer::Renderer;
