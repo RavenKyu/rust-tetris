@@ -1090,4 +1090,175 @@ mod tests {
         // 점수가 증가했는지 확인
         assert!(game.score() > 0);
     }
+
+    // ========================================================================
+    // 입력 잠금 테스트
+    // ========================================================================
+
+    #[test]
+    fn test_input_lock_initial_state() {
+        // 게임 시작 시 입력 잠금이 해제되어 있어야 함
+        let mut game = Marathon::with_seed(MarathonConfig::default(), 42);
+        game.start();
+        assert!(!game.is_input_locked());
+    }
+
+    #[test]
+    fn test_input_lock_blocks_movement() {
+        // AC-001: 입력 잠금 상태에서 이동 불가
+        let mut game = Marathon::with_seed(MarathonConfig::default(), 42);
+        game.start();
+
+        let initial_x = game.current_piece().unwrap().x;
+
+        // 입력 잠금 설정 (내부 상태 직접 변경)
+        game.input_locked = true;
+
+        // 이동 시도
+        assert!(!game.move_left());
+        assert!(!game.move_right());
+
+        // 위치 변화 없음
+        assert_eq!(game.current_piece().unwrap().x, initial_x);
+    }
+
+    #[test]
+    fn test_input_lock_blocks_rotation() {
+        // AC-002: 입력 잠금 상태에서 회전 불가
+        let mut game = Marathon::with_seed(MarathonConfig::default(), 42);
+        game.start();
+
+        let initial_shape = *game.current_piece().unwrap().shape();
+
+        // 입력 잠금 설정
+        game.input_locked = true;
+
+        // 회전 시도
+        assert!(!game.rotate_cw());
+        assert!(!game.rotate_ccw());
+
+        // 모양 변화 없음
+        assert_eq!(*game.current_piece().unwrap().shape(), initial_shape);
+    }
+
+    #[test]
+    fn test_input_lock_blocks_hard_drop() {
+        // AC-003: 입력 잠금 상태에서 하드드롭 불가
+        let mut game = Marathon::with_seed(MarathonConfig::default(), 42);
+        game.start();
+
+        let initial_score = game.score();
+
+        // 입력 잠금 설정
+        game.input_locked = true;
+
+        // 하드드롭 시도
+        let result = game.hard_drop();
+
+        // 피스가 잠기지 않음
+        assert!(!result.piece_locked);
+        // 점수 변화 없음
+        assert_eq!(game.score(), initial_score);
+    }
+
+    #[test]
+    fn test_input_lock_blocks_soft_drop() {
+        // 입력 잠금 상태에서 소프트드롭 불가
+        let mut game = Marathon::with_seed(MarathonConfig::default(), 42);
+        game.start();
+
+        let initial_y = game.current_piece().unwrap().y;
+        let initial_score = game.score();
+
+        // 입력 잠금 설정
+        game.input_locked = true;
+
+        // 소프트드롭 시도
+        assert!(!game.soft_drop());
+
+        // 위치와 점수 변화 없음
+        assert_eq!(game.current_piece().unwrap().y, initial_y);
+        assert_eq!(game.score(), initial_score);
+    }
+
+    #[test]
+    fn test_input_lock_blocks_hold() {
+        // 입력 잠금 상태에서 홀드 불가
+        let mut game = Marathon::with_seed(MarathonConfig::default(), 42);
+        game.start();
+
+        let initial_piece_kind = game.current_piece().unwrap().kind;
+
+        // 입력 잠금 설정
+        game.input_locked = true;
+
+        // 홀드 시도
+        assert!(!game.hold());
+
+        // 피스 변화 없음
+        assert_eq!(game.current_piece().unwrap().kind, initial_piece_kind);
+        assert!(game.held_piece().is_none());
+    }
+
+    #[test]
+    fn test_input_unlock_after_spawn() {
+        // AC-004: 다음 블록 스폰 후 입력 정상 처리
+        let mut game = Marathon::with_seed(MarathonConfig::default(), 42);
+        game.start();
+
+        // 하드드롭 실행 (피스 잠금 + 다음 피스 스폰)
+        game.hard_drop();
+
+        // 스폰 후 입력 잠금 해제 확인
+        assert!(!game.is_input_locked());
+
+        // 이동 가능
+        let initial_x = game.current_piece().unwrap().x;
+        assert!(game.move_left());
+        assert_eq!(game.current_piece().unwrap().x, initial_x - 1);
+    }
+
+    #[test]
+    fn test_input_lock_during_line_clear() {
+        // AC-005: 라인 클리어 중에도 입력 잠금 정상 동작
+
+        let mut game = Marathon::with_seed(MarathonConfig::new(10, 1), 42);
+        game.start();
+
+        // 바닥 행을 거의 채움 (9칸)
+        for x in 0..9 {
+            game.playfield.set(x, 0, Cell::Filled(CellColor::Cyan));
+        }
+
+        // 하드드롭으로 라인 클리어 유발
+        let result = game.hard_drop();
+
+        // 피스 잠금 확인
+        assert!(result.piece_locked);
+
+        // 스폰 후 입력 잠금 해제 확인
+        assert!(!game.is_input_locked());
+
+        // 다음 피스로 이동 가능
+        if game.state() == GameState::Playing {
+            assert!(game.move_left() || game.move_right());
+        }
+    }
+
+    #[test]
+    fn test_consecutive_hard_drops_work() {
+        // 연속 하드드롭이 정상 동작하는지 확인
+        let mut game = Marathon::with_seed(MarathonConfig::default(), 42);
+        game.start();
+
+        // 첫 번째 하드드롭
+        let result1 = game.hard_drop();
+        assert!(result1.piece_locked);
+
+        // 두 번째 하드드롭 (입력 잠금이 해제되어 가능해야 함)
+        if game.state() == GameState::Playing {
+            let result2 = game.hard_drop();
+            assert!(result2.piece_locked);
+        }
+    }
 }
