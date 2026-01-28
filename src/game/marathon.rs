@@ -298,6 +298,8 @@ impl Marathon {
     // === Game Logic ===
 
     /// 다음 피스 스폰
+    ///
+    /// 새 피스가 스폰되면 입력 잠금이 해제됩니다.
     fn spawn_next_piece(&mut self) -> bool {
         let kind = self.bag.pop_next();
         let piece = Tetromino::new(kind);
@@ -315,6 +317,10 @@ impl Marathon {
         self.gravity.reset_accumulator();
         self.last_move_was_rotation = false;
         self.last_rotation_was_kick = false;
+
+        // 입력 잠금 해제 (FR-003)
+        self.input_locked = false;
+
         true
     }
 
