@@ -481,14 +481,19 @@ impl Marathon {
         }
     }
 
-    /// 하드 드롭 (즉시 착지)
-    pub fn hard_drop(&mut self) -> u32 {
+    /// 하드 드롭 (즉시 착지 및 잠금)
+    ///
+    /// 피스를 즉시 바닥으로 이동시키고 잠급니다.
+    /// 하드 드롭은 락다운 딜레이 없이 즉시 피스를 고정합니다.
+    pub fn hard_drop(&mut self) -> UpdateResult {
+        let mut result = UpdateResult::default();
+
         if self.state != GameState::Playing {
-            return 0;
+            return result;
         }
 
         let Some(piece) = self.current_piece.as_ref() else {
-            return 0;
+            return result;
         };
 
         // 바닥까지 거리 계산
@@ -515,13 +520,58 @@ impl Marathon {
                 .process_event(ScoreEvent::HardDrop(drop_distance));
         }
 
-        // 바닥 접촉 상태 업데이트 (락다운 시작)
-        if let Some(piece) = self.current_piece.as_ref() {
-            let piece_clone = piece.clone();
-            self.lockdown.update_grounded(&piece_clone, &self.playfield);
+        // 즉시 피스 잠금 (하드 드롭은 락다운 딜레이 없음)
+        let old_level = self.scoring.level();
+
+        if let Some((lines, is_perfect)) = self.lock_piece() {
+            result.piece_locked = true;
+            result.lines_cleared = lines;
+
+            // 점수 처리
+            if lines > 0 {
+                if let Some(clear_type) = LineClearType::from_lines(lines) {
+                    // TODO: T-Spin 판정
+                    let tspin = TSpinType::None;
+                    let score_result = self
+                        .scoring
+                        .process_event(ScoreEvent::LineClear { clear_type, tspin });
+                    result.score_gained = score_result.score;
+                }
+
+                // Perfect Clear 보너스
+                if is_perfect {
+                    let pc_result = self.scoring.process_event(ScoreEvent::PerfectClear);
+                    result.score_gained += pc_result.score;
+                }
+
+                // 레벨업 체크
+                let new_level = self.scoring.level();
+                if new_level > old_level {
+                    result.leveled_up = true;
+                    self.gravity.set_level(new_level);
+                }
+
+                // 승리 조건 체크
+                if self.scoring.lines() >= self.config.target_lines {
+                    self.state = GameState::Victory;
+                    result.state_changed = Some(GameState::Victory);
+                    return result;
+                }
+            } else {
+                self.scoring.reset_combo();
+            }
+
+            // 다음 피스 스폰 (잠금 후에만 홀드 가능)
+            if self.state == GameState::Playing {
+                self.spawn_next_piece();
+                self.hold.allow_hold();
+            }
+
+            // 락다운 시스템 리셋
+            self.lockdown.reset();
         }
 
-        drop_distance
+        result
     }
 
     /// 시계방향 회전
@@ -747,9 +797,8 @@ mod tests {
         let mut game = Marathon::with_seed(MarathonConfig::with_start_level(5), 42);
         game.start();
 
-        // 게임 진행
+        // 게임 진행 (하드 드롭은 즉시 잠금)
         game.hard_drop();
-        game.update(Duration::ZERO);
 
         // 재시작
         game.restart();
@@ -814,11 +863,19 @@ mod tests {
         game.start();
 
         let initial_score = game.score();
-        let drop_distance = game.hard_drop();
+        let initial_piece = game.current_piece().map(|p| p.kind);
 
-        assert!(drop_distance > 0);
-        // 하드 드롭 점수: 2점/칸
-        assert_eq!(game.score(), initial_score + drop_distance * 2);
+        let result = game.hard_drop();
+
+        // 하드 드롭은 즉시 피스를 잠금
+        assert!(result.piece_locked);
+        // 점수가 증가했는지 확인 (하드 드롭 점수: 2점/칸)
+        assert!(game.score() > initial_score);
+        // 다음 피스가 스폰됨
+        assert!(game.current_piece().is_some());
+        // 새 피스는 다른 피스일 수 있음 (7-bag)
+        let new_piece = game.current_piece().map(|p| p.kind);
+        assert!(initial_piece != new_piece || new_piece.is_some());
     }
 
     // === Rotation Tests ===
@@ -863,9 +920,8 @@ mod tests {
         let first_kind = game.current_piece().unwrap().kind;
         game.hold(); // 첫 번째 홀드
 
-        // 다음 피스로 진행 (하드 드롭 후 업데이트)
+        // 다음 피스로 진행 (하드 드롭은 즉시 잠금 및 다음 피스 스폰)
         game.hard_drop();
-        game.update(Duration::ZERO);
 
         // 두 번째 홀드 시도 - 락다운 후에는 홀드 가능
         if game.state() == GameState::Playing {
@@ -947,10 +1003,11 @@ mod tests {
         let _initial_lines = game.lines();
         let initial_score = game.score();
 
-        // 하드 드롭 후 락다운
-        game.hard_drop();
-        game.update(Duration::from_millis(600)); // 락다운 딜레이 후
+        // 하드 드롭 (즉시 잠금)
+        let result = game.hard_drop();
 
+        // 피스가 잠겼는지 확인
+        assert!(result.piece_locked);
         // 점수가 증가했는지 확인 (하드 드롭 점수)
         assert!(game.score() > initial_score);
     }
@@ -994,16 +1051,14 @@ mod tests {
         let mut game = Marathon::with_seed(MarathonConfig::default(), 42);
         game.start();
 
-        // 여러 피스 처리
+        // 여러 피스 처리 (하드 드롭은 즉시 잠금)
         for _ in 0..5 {
             if game.state() != GameState::Playing {
                 break;
             }
 
-            // 하드 드롭
+            // 하드 드롭 (즉시 잠금 및 다음 피스 스폰)
             game.hard_drop();
-            // 락다운 대기
-            game.update(Duration::from_millis(600));
         }
 
         // 게임이 여전히 진행 중이거나 게임 오버

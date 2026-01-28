@@ -156,13 +156,17 @@ mod app {
                 // 값 감소
                 match settings_state.selected_item {
                     0 => {
-                        settings.das_ms =
-                            settings.das_ms.saturating_sub(SETTINGS_STEP).max(GameSettings::DAS_MIN);
+                        settings.das_ms = settings
+                            .das_ms
+                            .saturating_sub(SETTINGS_STEP)
+                            .max(GameSettings::DAS_MIN);
                         settings_state.das_ms = settings.das_ms;
                     }
                     _ => {
-                        settings.arr_ms =
-                            settings.arr_ms.saturating_sub(SETTINGS_STEP).max(GameSettings::ARR_MIN);
+                        settings.arr_ms = settings
+                            .arr_ms
+                            .saturating_sub(SETTINGS_STEP)
+                            .max(GameSettings::ARR_MIN);
                         settings_state.arr_ms = settings.arr_ms;
                     }
                 }
@@ -174,11 +178,13 @@ mod app {
                 // 값 증가
                 match settings_state.selected_item {
                     0 => {
-                        settings.das_ms = (settings.das_ms + SETTINGS_STEP).min(GameSettings::DAS_MAX);
+                        settings.das_ms =
+                            (settings.das_ms + SETTINGS_STEP).min(GameSettings::DAS_MAX);
                         settings_state.das_ms = settings.das_ms;
                     }
                     _ => {
-                        settings.arr_ms = (settings.arr_ms + SETTINGS_STEP).min(GameSettings::ARR_MAX);
+                        settings.arr_ms =
+                            (settings.arr_ms + SETTINGS_STEP).min(GameSettings::ARR_MAX);
                         settings_state.arr_ms = settings.arr_ms;
                     }
                 }

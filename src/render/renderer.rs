@@ -11,10 +11,10 @@ use sdl3::video::{Window, WindowContext};
 use super::color::{Color, Palette};
 use super::layout::{DEFAULT_WINDOW_HEIGHT, DEFAULT_WINDOW_WIDTH, Layout, Rect};
 use super::state::{RenderState, SettingsState};
-use crate::settings::GameSettings;
 use crate::game::{
     Cell, Playfield, Tetromino, TetrominoKind, VISIBLE_HEIGHT, calculate_ghost_position,
 };
+use crate::settings::GameSettings;
 
 // ============================================================================
 // 타입 변환
@@ -505,7 +505,8 @@ impl Renderer {
         let hint_start_x = panel_x + (panel_width as i32 - hints_total_width as i32) / 2;
 
         // 위 화살표 (항목 전환)
-        self.canvas.set_draw_color(to_sdl_color(Palette::TEXT_SECONDARY));
+        self.canvas
+            .set_draw_color(to_sdl_color(Palette::TEXT_SECONDARY));
         let up_rect = Rect::new(hint_start_x, hint_y, hint_size, hint_size);
         self.canvas
             .fill_rect(to_sdl_rect(up_rect))
