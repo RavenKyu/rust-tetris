@@ -1,5 +1,8 @@
 # Claude Code Instructions
 
+> **IMPORTANT**: 모든 세션 시작 시 이 파일 전체를 읽고 워크플로우를 따를 것.
+> 특히 `bd ready` 확인 없이 작업을 시작하지 말 것.
+
 ## 프로젝트 개요
 
 - **프로젝트명**: Tetris
@@ -103,6 +106,8 @@ gh issue create --title "{기능명}: {세부 작업}" \
 
 ```bash
 # 1. GitHub Issue 확인
+gh issue view 1 --json title,body,labels,state
+# 또는
 gh issue list --label "task" --state open
 
 # 2. Beads에 세션 작업 생성 (GitHub Issue 연결)
