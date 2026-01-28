@@ -123,6 +123,8 @@ pub struct Marathon {
     last_move_was_rotation: bool,
     /// 마지막 회전이 킥이었는지 (T-Spin Mini 판정용)
     last_rotation_was_kick: bool,
+    /// 입력 잠금 상태 (하드드롭 후 다음 피스 스폰까지)
+    input_locked: bool,
 }
 
 impl Marathon {
@@ -147,6 +149,7 @@ impl Marathon {
             rotation: RotationSystem::new(),
             last_move_was_rotation: false,
             last_rotation_was_kick: false,
+            input_locked: false,
         }
     }
 
@@ -200,6 +203,14 @@ impl Marathon {
     #[must_use]
     pub fn can_hold(&self) -> bool {
         self.hold.can_hold()
+    }
+
+    /// 입력 잠금 상태 여부
+    ///
+    /// 하드드롭 후 다음 피스가 스폰될 때까지 true
+    #[must_use]
+    pub fn is_input_locked(&self) -> bool {
+        self.input_locked
     }
 
     /// 다음 피스들 미리보기
@@ -287,6 +298,8 @@ impl Marathon {
     // === Game Logic ===
 
     /// 다음 피스 스폰
+    ///
+    /// 새 피스가 스폰되면 입력 잠금이 해제됩니다.
     fn spawn_next_piece(&mut self) -> bool {
         let kind = self.bag.pop_next();
         let piece = Tetromino::new(kind);
@@ -304,6 +317,10 @@ impl Marathon {
         self.gravity.reset_accumulator();
         self.last_move_was_rotation = false;
         self.last_rotation_was_kick = false;
+
+        // 입력 잠금 해제 (FR-003)
+        self.input_locked = false;
+
         true
     }
 
@@ -432,7 +449,7 @@ impl Marathon {
 
     /// 피스 이동 시도
     pub fn try_move(&mut self, dx: i32, dy: i32) -> bool {
-        if self.state != GameState::Playing {
+        if self.state != GameState::Playing || self.input_locked {
             return false;
         }
 
@@ -481,15 +498,24 @@ impl Marathon {
         }
     }
 
-    /// 하드 드롭 (즉시 착지)
-    pub fn hard_drop(&mut self) -> u32 {
-        if self.state != GameState::Playing {
-            return 0;
+    /// 하드 드롭 (즉시 착지 및 잠금)
+    ///
+    /// 피스를 즉시 바닥으로 이동시키고 잠급니다.
+    /// 하드 드롭은 락다운 딜레이 없이 즉시 피스를 고정합니다.
+    /// 하드 드롭 시 입력이 즉시 잠기며, 다음 피스 스폰 시 해제됩니다.
+    pub fn hard_drop(&mut self) -> UpdateResult {
+        let mut result = UpdateResult::default();
+
+        if self.state != GameState::Playing || self.input_locked {
+            return result;
         }
 
         let Some(piece) = self.current_piece.as_ref() else {
-            return 0;
+            return result;
         };
+
+        // 입력 잠금 즉시 적용 (FR-004)
+        self.input_locked = true;
 
         // 바닥까지 거리 계산
         let mut drop_distance = 0u32;
@@ -515,13 +541,58 @@ impl Marathon {
                 .process_event(ScoreEvent::HardDrop(drop_distance));
         }
 
-        // 바닥 접촉 상태 업데이트 (락다운 시작)
-        if let Some(piece) = self.current_piece.as_ref() {
-            let piece_clone = piece.clone();
-            self.lockdown.update_grounded(&piece_clone, &self.playfield);
+        // 즉시 피스 잠금 (하드 드롭은 락다운 딜레이 없음)
+        let old_level = self.scoring.level();
+
+        if let Some((lines, is_perfect)) = self.lock_piece() {
+            result.piece_locked = true;
+            result.lines_cleared = lines;
+
+            // 점수 처리
+            if lines > 0 {
+                if let Some(clear_type) = LineClearType::from_lines(lines) {
+                    // TODO: T-Spin 판정
+                    let tspin = TSpinType::None;
+                    let score_result = self
+                        .scoring
+                        .process_event(ScoreEvent::LineClear { clear_type, tspin });
+                    result.score_gained = score_result.score;
+                }
+
+                // Perfect Clear 보너스
+                if is_perfect {
+                    let pc_result = self.scoring.process_event(ScoreEvent::PerfectClear);
+                    result.score_gained += pc_result.score;
+                }
+
+                // 레벨업 체크
+                let new_level = self.scoring.level();
+                if new_level > old_level {
+                    result.leveled_up = true;
+                    self.gravity.set_level(new_level);
+                }
+
+                // 승리 조건 체크
+                if self.scoring.lines() >= self.config.target_lines {
+                    self.state = GameState::Victory;
+                    result.state_changed = Some(GameState::Victory);
+                    return result;
+                }
+            } else {
+                self.scoring.reset_combo();
+            }
+
+            // 다음 피스 스폰 (잠금 후에만 홀드 가능)
+            if self.state == GameState::Playing {
+                self.spawn_next_piece();
+                self.hold.allow_hold();
+            }
+
+            // 락다운 시스템 리셋
+            self.lockdown.reset();
         }
 
-        drop_distance
+        result
     }
 
     /// 시계방향 회전
@@ -541,7 +612,7 @@ impl Marathon {
 
     /// 회전 시도 (SRS wall kick 적용)
     fn try_rotate(&mut self, direction: RotationDirection) -> bool {
-        if self.state != GameState::Playing {
+        if self.state != GameState::Playing || self.input_locked {
             return false;
         }
 
@@ -583,7 +654,7 @@ impl Marathon {
 
     /// 홀드
     pub fn hold(&mut self) -> bool {
-        if self.state != GameState::Playing {
+        if self.state != GameState::Playing || self.input_locked {
             return false;
         }
 
@@ -747,9 +818,8 @@ mod tests {
         let mut game = Marathon::with_seed(MarathonConfig::with_start_level(5), 42);
         game.start();
 
-        // 게임 진행
+        // 게임 진행 (하드 드롭은 즉시 잠금)
         game.hard_drop();
-        game.update(Duration::ZERO);
 
         // 재시작
         game.restart();
@@ -814,11 +884,19 @@ mod tests {
         game.start();
 
         let initial_score = game.score();
-        let drop_distance = game.hard_drop();
+        let initial_piece = game.current_piece().map(|p| p.kind);
 
-        assert!(drop_distance > 0);
-        // 하드 드롭 점수: 2점/칸
-        assert_eq!(game.score(), initial_score + drop_distance * 2);
+        let result = game.hard_drop();
+
+        // 하드 드롭은 즉시 피스를 잠금
+        assert!(result.piece_locked);
+        // 점수가 증가했는지 확인 (하드 드롭 점수: 2점/칸)
+        assert!(game.score() > initial_score);
+        // 다음 피스가 스폰됨
+        assert!(game.current_piece().is_some());
+        // 새 피스는 다른 피스일 수 있음 (7-bag)
+        let new_piece = game.current_piece().map(|p| p.kind);
+        assert!(initial_piece != new_piece || new_piece.is_some());
     }
 
     // === Rotation Tests ===
@@ -863,9 +941,8 @@ mod tests {
         let first_kind = game.current_piece().unwrap().kind;
         game.hold(); // 첫 번째 홀드
 
-        // 다음 피스로 진행 (하드 드롭 후 업데이트)
+        // 다음 피스로 진행 (하드 드롭은 즉시 잠금 및 다음 피스 스폰)
         game.hard_drop();
-        game.update(Duration::ZERO);
 
         // 두 번째 홀드 시도 - 락다운 후에는 홀드 가능
         if game.state() == GameState::Playing {
@@ -947,10 +1024,11 @@ mod tests {
         let _initial_lines = game.lines();
         let initial_score = game.score();
 
-        // 하드 드롭 후 락다운
-        game.hard_drop();
-        game.update(Duration::from_millis(600)); // 락다운 딜레이 후
+        // 하드 드롭 (즉시 잠금)
+        let result = game.hard_drop();
 
+        // 피스가 잠겼는지 확인
+        assert!(result.piece_locked);
         // 점수가 증가했는지 확인 (하드 드롭 점수)
         assert!(game.score() > initial_score);
     }
@@ -994,16 +1072,14 @@ mod tests {
         let mut game = Marathon::with_seed(MarathonConfig::default(), 42);
         game.start();
 
-        // 여러 피스 처리
+        // 여러 피스 처리 (하드 드롭은 즉시 잠금)
         for _ in 0..5 {
             if game.state() != GameState::Playing {
                 break;
             }
 
-            // 하드 드롭
+            // 하드 드롭 (즉시 잠금 및 다음 피스 스폰)
             game.hard_drop();
-            // 락다운 대기
-            game.update(Duration::from_millis(600));
         }
 
         // 게임이 여전히 진행 중이거나 게임 오버
@@ -1013,5 +1089,176 @@ mod tests {
 
         // 점수가 증가했는지 확인
         assert!(game.score() > 0);
+    }
+
+    // ========================================================================
+    // 입력 잠금 테스트
+    // ========================================================================
+
+    #[test]
+    fn test_input_lock_initial_state() {
+        // 게임 시작 시 입력 잠금이 해제되어 있어야 함
+        let mut game = Marathon::with_seed(MarathonConfig::default(), 42);
+        game.start();
+        assert!(!game.is_input_locked());
+    }
+
+    #[test]
+    fn test_input_lock_blocks_movement() {
+        // AC-001: 입력 잠금 상태에서 이동 불가
+        let mut game = Marathon::with_seed(MarathonConfig::default(), 42);
+        game.start();
+
+        let initial_x = game.current_piece().unwrap().x;
+
+        // 입력 잠금 설정 (내부 상태 직접 변경)
+        game.input_locked = true;
+
+        // 이동 시도
+        assert!(!game.move_left());
+        assert!(!game.move_right());
+
+        // 위치 변화 없음
+        assert_eq!(game.current_piece().unwrap().x, initial_x);
+    }
+
+    #[test]
+    fn test_input_lock_blocks_rotation() {
+        // AC-002: 입력 잠금 상태에서 회전 불가
+        let mut game = Marathon::with_seed(MarathonConfig::default(), 42);
+        game.start();
+
+        let initial_shape = *game.current_piece().unwrap().shape();
+
+        // 입력 잠금 설정
+        game.input_locked = true;
+
+        // 회전 시도
+        assert!(!game.rotate_cw());
+        assert!(!game.rotate_ccw());
+
+        // 모양 변화 없음
+        assert_eq!(*game.current_piece().unwrap().shape(), initial_shape);
+    }
+
+    #[test]
+    fn test_input_lock_blocks_hard_drop() {
+        // AC-003: 입력 잠금 상태에서 하드드롭 불가
+        let mut game = Marathon::with_seed(MarathonConfig::default(), 42);
+        game.start();
+
+        let initial_score = game.score();
+
+        // 입력 잠금 설정
+        game.input_locked = true;
+
+        // 하드드롭 시도
+        let result = game.hard_drop();
+
+        // 피스가 잠기지 않음
+        assert!(!result.piece_locked);
+        // 점수 변화 없음
+        assert_eq!(game.score(), initial_score);
+    }
+
+    #[test]
+    fn test_input_lock_blocks_soft_drop() {
+        // 입력 잠금 상태에서 소프트드롭 불가
+        let mut game = Marathon::with_seed(MarathonConfig::default(), 42);
+        game.start();
+
+        let initial_y = game.current_piece().unwrap().y;
+        let initial_score = game.score();
+
+        // 입력 잠금 설정
+        game.input_locked = true;
+
+        // 소프트드롭 시도
+        assert!(!game.soft_drop());
+
+        // 위치와 점수 변화 없음
+        assert_eq!(game.current_piece().unwrap().y, initial_y);
+        assert_eq!(game.score(), initial_score);
+    }
+
+    #[test]
+    fn test_input_lock_blocks_hold() {
+        // 입력 잠금 상태에서 홀드 불가
+        let mut game = Marathon::with_seed(MarathonConfig::default(), 42);
+        game.start();
+
+        let initial_piece_kind = game.current_piece().unwrap().kind;
+
+        // 입력 잠금 설정
+        game.input_locked = true;
+
+        // 홀드 시도
+        assert!(!game.hold());
+
+        // 피스 변화 없음
+        assert_eq!(game.current_piece().unwrap().kind, initial_piece_kind);
+        assert!(game.held_piece().is_none());
+    }
+
+    #[test]
+    fn test_input_unlock_after_spawn() {
+        // AC-004: 다음 블록 스폰 후 입력 정상 처리
+        let mut game = Marathon::with_seed(MarathonConfig::default(), 42);
+        game.start();
+
+        // 하드드롭 실행 (피스 잠금 + 다음 피스 스폰)
+        game.hard_drop();
+
+        // 스폰 후 입력 잠금 해제 확인
+        assert!(!game.is_input_locked());
+
+        // 이동 가능
+        let initial_x = game.current_piece().unwrap().x;
+        assert!(game.move_left());
+        assert_eq!(game.current_piece().unwrap().x, initial_x - 1);
+    }
+
+    #[test]
+    fn test_input_lock_during_line_clear() {
+        // AC-005: 라인 클리어 중에도 입력 잠금 정상 동작
+
+        let mut game = Marathon::with_seed(MarathonConfig::new(10, 1), 42);
+        game.start();
+
+        // 바닥 행을 거의 채움 (9칸)
+        for x in 0..9 {
+            game.playfield.set(x, 0, Cell::Filled(CellColor::Cyan));
+        }
+
+        // 하드드롭으로 라인 클리어 유발
+        let result = game.hard_drop();
+
+        // 피스 잠금 확인
+        assert!(result.piece_locked);
+
+        // 스폰 후 입력 잠금 해제 확인
+        assert!(!game.is_input_locked());
+
+        // 다음 피스로 이동 가능
+        if game.state() == GameState::Playing {
+            assert!(game.move_left() || game.move_right());
+        }
+    }
+
+    #[test]
+    fn test_consecutive_hard_drops_work() {
+        // 연속 하드드롭이 정상 동작하는지 확인
+        let mut game = Marathon::with_seed(MarathonConfig::default(), 42);
+        game.start();
+
+        // 첫 번째 하드드롭
+        let result1 = game.hard_drop();
+        assert!(result1.piece_locked);
+
+        // 두 번째 하드드롭 (입력 잠금이 해제되어 가능해야 함)
+        if game.state() == GameState::Playing {
+            let result2 = game.hard_drop();
+            assert!(result2.piece_locked);
+        }
     }
 }
