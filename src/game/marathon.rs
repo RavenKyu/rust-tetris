@@ -123,6 +123,8 @@ pub struct Marathon {
     last_move_was_rotation: bool,
     /// 마지막 회전이 킥이었는지 (T-Spin Mini 판정용)
     last_rotation_was_kick: bool,
+    /// 입력 잠금 상태 (하드드롭 후 다음 피스 스폰까지)
+    input_locked: bool,
 }
 
 impl Marathon {
@@ -147,6 +149,7 @@ impl Marathon {
             rotation: RotationSystem::new(),
             last_move_was_rotation: false,
             last_rotation_was_kick: false,
+            input_locked: false,
         }
     }
 
@@ -200,6 +203,14 @@ impl Marathon {
     #[must_use]
     pub fn can_hold(&self) -> bool {
         self.hold.can_hold()
+    }
+
+    /// 입력 잠금 상태 여부
+    ///
+    /// 하드드롭 후 다음 피스가 스폰될 때까지 true
+    #[must_use]
+    pub fn is_input_locked(&self) -> bool {
+        self.input_locked
     }
 
     /// 다음 피스들 미리보기
@@ -432,7 +443,7 @@ impl Marathon {
 
     /// 피스 이동 시도
     pub fn try_move(&mut self, dx: i32, dy: i32) -> bool {
-        if self.state != GameState::Playing {
+        if self.state != GameState::Playing || self.input_locked {
             return false;
         }
 
@@ -485,16 +496,20 @@ impl Marathon {
     ///
     /// 피스를 즉시 바닥으로 이동시키고 잠급니다.
     /// 하드 드롭은 락다운 딜레이 없이 즉시 피스를 고정합니다.
+    /// 하드 드롭 시 입력이 즉시 잠기며, 다음 피스 스폰 시 해제됩니다.
     pub fn hard_drop(&mut self) -> UpdateResult {
         let mut result = UpdateResult::default();
 
-        if self.state != GameState::Playing {
+        if self.state != GameState::Playing || self.input_locked {
             return result;
         }
 
         let Some(piece) = self.current_piece.as_ref() else {
             return result;
         };
+
+        // 입력 잠금 즉시 적용 (FR-004)
+        self.input_locked = true;
 
         // 바닥까지 거리 계산
         let mut drop_distance = 0u32;
@@ -591,7 +606,7 @@ impl Marathon {
 
     /// 회전 시도 (SRS wall kick 적용)
     fn try_rotate(&mut self, direction: RotationDirection) -> bool {
-        if self.state != GameState::Playing {
+        if self.state != GameState::Playing || self.input_locked {
             return false;
         }
 
@@ -633,7 +648,7 @@ impl Marathon {
 
     /// 홀드
     pub fn hold(&mut self) -> bool {
-        if self.state != GameState::Playing {
+        if self.state != GameState::Playing || self.input_locked {
             return false;
         }
 
